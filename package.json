@@ -1,0 +1,49 @@
+{
+  "name": "desktop-pixel-pet",
+  "version": "1.0.0",
+  "description": "A cute customized pixel-art desktop pet demo for anniversary.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "node scripts/build.js"
+  },
+  "keywords": [],
+  "author": "Antigravity",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.lovepet.desktop",
+    "productName": "LovePet",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": null
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "pet.js",
+      "pet.css",
+      "dashboard.html",
+      "dashboard.js",
+      "dashboard.css",
+      "im-config-builtin.js",
+      "assets/**/*"
+    ]
+  },
+  "dependencies": {
+    "@tencentcloud/lite-chat": "^4.3.1",
+    "crypto-js": "^4.2.0",
+    "tim-upload-plugin": "^1.4.3",
+    "tls-sig-api-v2": "^1.0.2"
+  }
+}

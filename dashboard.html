@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://ws.tim.qq.com wss://ws.im.qcloud.com wss://*.my-imcloud.com wss://*.im.qcloud.com https://*.im.qcloud.com https://*.my-imcloud.com https://*.qcloud.com https://*.myqcloud.com; img-src 'self' data: https://*.myqcloud.com;">
+  <title>恋爱纪念册 & 控制面板</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <!-- Ambient background blobs -->
+  <div class="bg-blob blob-pink"></div>
+  <div class="bg-blob blob-purple"></div>
+
+  <!-- Glassmorphism Container -->
+  <div class="dashboard-container">
+    <!-- Custom Window Header (Draggable) -->
+    <header class="window-header" id="drag-header">
+      <div class="window-title">💖 专属恋爱纪念册</div>
+      <button class="close-btn" id="close-win-btn">&times;</button>
+    </header>
+
+    <!-- Content Layout -->
+    <div class="dashboard-body">
+      <!-- Sidebar Navigation -->
+      <nav class="sidebar">
+        <div class="nav-item active" data-tab="anniversary-tab">🌸 心动纪念</div>
+        <div class="nav-item" data-tab="memo-tab">📝 备忘录</div>
+      </nav>
+
+      <!-- Main Panels -->
+      <main class="main-content">
+        <!-- Tab 1: Anniversary -->
+        <section id="anniversary-tab" class="tab-content active">
+          <div class="love-counter-card">
+            <h3 class="love-days-title">我们在一起已经</h3>
+            <div class="days-display"><span id="love-days-count">0</span><span class="days-unit">天</span></div>
+            <div class="anniversary-countdown" id="countdown-text">距离下一个纪念日还有 0 天</div>
+          </div>
+          
+          <div class="card card-date-picker">
+            <label for="anniversary-date-input" class="input-label">📅 设置恋爱纪念日：</label>
+            <div class="input-row">
+              <input type="date" id="anniversary-date-input">
+              <button class="btn btn-primary" id="save-date-btn">保存日期</button>
+            </div>
+          </div>
+
+          <div class="card card-chat">
+            <label class="input-label">🕊️ 飞鸽传书 (实时互动)：</label>
+            <div class="chat-history-container" id="chat-history">
+              <div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">连接中...</div>
+            </div>
+            <div class="input-row" style="margin-top: 10px;">
+              <input type="text" id="chat-msg-input" placeholder="写下心里话推送给对方...">
+              <button class="btn btn-primary" id="send-chat-btn">发送</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Memo Notepad -->
+        <section id="memo-tab" class="tab-content">
+          <div class="memo-header">
+            <h4>💡 恋爱备忘便签</h4>
+            <div class="input-row">
+              <input type="text" id="new-memo-input" placeholder="写下你们的约定或计划...">
+              <button class="btn btn-primary" id="add-memo-btn">添加</button>
+            </div>
+          </div>
+          <div class="memo-list-container">
+            <ul id="memo-list">
+              <!-- Memos loaded dynamically -->
+            </ul>
+          </div>
+        </section>
+
+
+      </main>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

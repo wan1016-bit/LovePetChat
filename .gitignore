@@ -1,0 +1,7 @@
+node_modules
+dist
+secret.json
+*.log
+
+# 构建产物（含密钥，不可提交）
+im-config-builtin.js

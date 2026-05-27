@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://ws.tim.qq.com wss://ws.im.qcloud.com wss://*.my-imcloud.com wss://*.im.qcloud.com https://*.im.qcloud.com https://*.my-imcloud.com https://*.qcloud.com https://*.myqcloud.com; img-src 'self' data: https://*.myqcloud.com;">
+  <title>Desktop Pet</title>
+  <link rel="stylesheet" href="pet.css">
+</head>
+<body>
+  <div id="pet-container" class="state-idle">
+    <!-- Dialogue Bubble -->
+    <div id="dialogue-bubble" class="hidden">
+      <span id="dialogue-text">想我啦？</span>
+      <div class="bubble-arrow"></div>
+    </div>
+
+    <!-- Chibi Anime Character Wrapper -->
+    <div id="pet-character-wrapper">
+      <div id="pet-character"></div>
+    </div>
+
+    <!-- Shadow at bottom -->
+    <div id="pet-shadow"></div>
+
+    <!-- Zzz bubbles for Nap state -->
+    <div id="zzz-container" class="hidden">
+      <span class="zzz zzz-1">z</span>
+      <span class="zzz zzz-2">z</span>
+      <span class="zzz zzz-3">Z</span>
+    </div>
+  </div>
+
+
+  <script src="pet.js"></script>
+</body>
+</html>
