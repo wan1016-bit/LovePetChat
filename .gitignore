@@ -5,3 +5,6 @@ secret.json
 
 # 构建产物（含密钥，不可提交）
 im-config-builtin.js
+
+# 忽略本地角色图片，不上传至 GitHub
+assets/characters/
