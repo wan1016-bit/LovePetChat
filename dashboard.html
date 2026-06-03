@@ -15,7 +15,7 @@
   <div class="dashboard-container">
     <!-- Custom Window Header (Draggable) -->
     <header class="window-header" id="drag-header">
-      <div class="window-title">💖 专属恋爱纪念册</div>
+      <div class="window-title">💖 专属详情面板</div>
       <button class="close-btn" id="close-win-btn">&times;</button>
     </header>
 
@@ -24,7 +24,8 @@
       <!-- Sidebar Navigation -->
       <nav class="sidebar">
         <div class="nav-item active" data-tab="anniversary-tab">🌸 心动纪念</div>
-        <div class="nav-item" data-tab="memo-tab">📝 备忘录</div>
+        <div class="nav-item" data-tab="memo-tab">📝 待办清单</div>
+        <div class="nav-item" data-tab="chat-tab">🕊️ 飞鸽传书</div>
       </nav>
 
       <!-- Main Panels -->
@@ -32,37 +33,42 @@
         <!-- Tab 1: Anniversary -->
         <section id="anniversary-tab" class="tab-content active">
           <div class="love-counter-card">
-            <h3 class="love-days-title">我们在一起已经</h3>
+            <h3 class="love-days-title">💑 我们在一起已经</h3>
             <div class="days-display"><span id="love-days-count">0</span><span class="days-unit">天</span></div>
-            <div class="anniversary-countdown" id="countdown-text">距离下一个纪念日还有 0 天</div>
+            <div class="anniversary-countdown" id="countdown-text">未设置自定义纪念日</div>
           </div>
           
           <div class="card card-date-picker">
-            <label for="anniversary-date-input" class="input-label">📅 设置恋爱纪念日：</label>
+            <label for="anniversary-date-input" class="input-label">📅 设置在一起纪念日 (起始日)：</label>
             <div class="input-row">
               <input type="date" id="anniversary-date-input">
-              <button class="btn btn-primary" id="save-date-btn">保存日期</button>
+              <button class="btn btn-primary" id="save-date-btn">保存</button>
             </div>
           </div>
 
-          <div class="card card-chat">
-            <label class="input-label">🕊️ 飞鸽传书 (实时互动)：</label>
-            <div class="chat-history-container" id="chat-history">
-              <div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">连接中...</div>
+          <div class="card card-custom-anniversary">
+            <label class="input-label">🎉 自定义倒计时纪念日：</label>
+            <div class="input-row" style="margin-bottom: 8px;">
+              <input type="text" id="custom-anniversary-name-input" placeholder="输入纪念日名称 (如：生日、百天纪念)">
             </div>
-            <div class="input-row" style="margin-top: 10px;">
-              <input type="text" id="chat-msg-input" placeholder="写下心里话推送给对方...">
-              <button class="btn btn-primary" id="send-chat-btn">发送</button>
+            <div class="input-row">
+              <input type="date" id="custom-anniversary-date-input">
+              <button class="btn btn-primary" id="save-custom-anniversary-btn">保存纪念日</button>
+            </div>
+            <div class="anniversary-list-container" style="max-height: 120px; overflow-y: auto; margin-top: 12px; padding-right: 4px;">
+              <ul id="anniversary-list" style="list-style: none; display: flex; flex-direction: column; gap: 8px;">
+                <!-- Loaded dynamically -->
+              </ul>
             </div>
           </div>
         </section>
 
-        <!-- Tab 2: Memo Notepad -->
+        <!-- Tab 2: TodoList -->
         <section id="memo-tab" class="tab-content">
           <div class="memo-header">
-            <h4>💡 恋爱备忘便签</h4>
-            <div class="input-row">
-              <input type="text" id="new-memo-input" placeholder="写下你们的约定或计划...">
+            <h4>💡 待办事项清单 (TodoList)</h4>
+            <div class="input-row" style="margin-top: 8px;">
+              <input type="text" id="new-memo-input" placeholder="写下新的任务或约定...">
               <button class="btn btn-primary" id="add-memo-btn">添加</button>
             </div>
           </div>
@@ -73,7 +79,19 @@
           </div>
         </section>
 
-
+        <!-- Tab 3: Chat Box -->
+        <section id="chat-tab" class="tab-content" style="height: 100%;">
+          <div class="card card-chat-page" style="margin-bottom: 0; height: 100%; display: flex; flex-direction: column;">
+            <label class="input-label">🕊️ 飞鸽传书 (与伴侣实时互动)</label>
+            <div class="chat-history-container" id="chat-history">
+              <div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">连接中...</div>
+            </div>
+            <div class="input-row" style="margin-top: 12px;">
+              <input type="text" id="chat-msg-input" placeholder="写下心里话推送给对方...">
+              <button class="btn btn-primary" id="send-chat-btn">发送</button>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   </div>

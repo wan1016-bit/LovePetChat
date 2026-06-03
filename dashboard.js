@@ -2,12 +2,17 @@
 let config = null;
 let selfID = '';
 let partnerID = '';
+let lastHourKey = null;
 
 // Elements
 const loveDaysCount = document.getElementById('love-days-count');
 const countdownText = document.getElementById('countdown-text');
 const dateInput = document.getElementById('anniversary-date-input');
 const saveDateBtn = document.getElementById('save-date-btn');
+
+const customAnniversaryNameInput = document.getElementById('custom-anniversary-name-input');
+const customAnniversaryDateInput = document.getElementById('custom-anniversary-date-input');
+const saveCustomAnniversaryBtn = document.getElementById('save-custom-anniversary-btn');
 
 const newMemoInput = document.getElementById('new-memo-input');
 const addMemoBtn = document.getElementById('add-memo-btn');
@@ -33,6 +38,11 @@ navItems.forEach(item => {
     
     item.classList.add('active');
     document.getElementById(tabId).classList.add('active');
+
+    // Notify main process of chat tab focus
+    if (window.api.notifyChatTabActive) {
+      window.api.notifyChatTabActive(tabId === 'chat-tab');
+    }
   });
 });
 
@@ -43,8 +53,10 @@ async function init() {
   // Fill inputs
   if (config.anniversaryDate) {
     dateInput.value = config.anniversaryDate;
-    updateAnniversary(config.anniversaryDate);
   }
+  
+  updateAnniversary();
+  renderCustomAnniversaries();
   
   // Render Memos
   renderMemos();
@@ -55,7 +67,8 @@ async function init() {
     if (imConfig) {
       selfID = imConfig.selfID;
       partnerID = imConfig.partnerID;
-      chatHistory.innerHTML = '<div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">暂无互动记录</div>';
+      chatHistory.innerHTML = '<div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">连接中...</div>';
+      window.api.requestIMHistory();
     } else {
       chatHistory.innerHTML = '<div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">未检测到IM配置 (离线模式)</div>';
     }
@@ -66,6 +79,7 @@ async function init() {
 
   // Event Listeners
   saveDateBtn.addEventListener('click', saveDate);
+  saveCustomAnniversaryBtn.addEventListener('click', saveCustomAnniversary);
   addMemoBtn.addEventListener('click', addMemo);
   
   // Chat listeners
@@ -84,8 +98,9 @@ async function init() {
   // Listen for config updates from other windows
   window.api.onConfigUpdated((newConfig) => {
     config = newConfig;
-    dateInput.value = config.anniversaryDate;
-    updateAnniversary(config.anniversaryDate);
+    dateInput.value = config.anniversaryDate || '';
+    updateAnniversary();
+    renderCustomAnniversaries();
     renderMemos();
   });
 
@@ -93,44 +108,78 @@ async function init() {
   window.api.onUpdateChatHistory((data) => {
     appendChatBubble(data);
   });
+
+  // Listen for historical chat logs
+  window.api.onIMHistoryResponse((history) => {
+    renderChatHistory(history);
+  });
+
+  // Handle initial tab routing
+  try {
+    const initTab = await window.api.getDashboardInitTab();
+    if (initTab) {
+      switchTab(initTab);
+    } else {
+      if (window.api.notifyChatTabActive) {
+        window.api.notifyChatTabActive(false);
+      }
+    }
+  } catch (e) {
+    console.error("Failed to get initial tab:", e);
+  }
+
+  // Listen for tab switch requests at runtime
+  window.api.onSwitchTab((tabId) => {
+    switchTab(tabId);
+  });
 }
 
-// Calculate and render love anniversary stats
-function updateAnniversary(dateString) {
-  if (!dateString) return;
-  
-  const startDate = new Date(dateString);
-  const today = new Date();
-  
-  // Normalize times to midnight to avoid fractional day math anomalies
-  startDate.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  
-  const diffTime = today - startDate;
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
-  loveDaysCount.textContent = diffDays >= 0 ? diffDays : 0;
-  
-  // Calculate next anniversary
-  const currentYear = today.getFullYear();
-  let nextAnniversary = new Date(startDate);
-  nextAnniversary.setFullYear(currentYear);
-  
-  // If the anniversary has passed this year, look at next year
-  if (nextAnniversary < today) {
-    nextAnniversary.setFullYear(currentYear + 1);
+// Calculate and render love anniversary stats and custom countdown
+function updateAnniversary() {
+  if (config.anniversaryDate) {
+    const startDate = new Date(config.anniversaryDate);
+    const today = new Date();
+    
+    // Normalize times to midnight to avoid fractional day math anomalies
+    startDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    
+    const diffTime = today - startDate;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    loveDaysCount.textContent = diffDays >= 0 ? diffDays : 0;
+  } else {
+    loveDaysCount.textContent = '0';
   }
   
-  const countdownTime = nextAnniversary - today;
-  const countdownDays = Math.ceil(countdownTime / (1000 * 60 * 60 * 24));
-  
-  const yearsTogether = nextAnniversary.getFullYear() - startDate.getFullYear();
-  const anniversaryName = `${yearsTogether}周年`;
-  
-  if (countdownDays === 0) {
-    countdownText.innerHTML = `🎉 今天是我们的 <strong>${anniversaryName}纪念日</strong>！情人节快乐！❤️`;
+  if (config.customAnniversaries && config.customAnniversaries.length > 0) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Calculate countdown days for all custom anniversaries (based on next occurrence)
+    const list = config.customAnniversaries.map(anniv => {
+      const targetDate = getNextOccurrence(anniv.date);
+      const diffTime = targetDate - today;
+      const countdownDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return { ...anniv, countdownDays };
+    });
+    
+    // Sort all anniversaries ascending by countdownDays (closest upcoming first)
+    list.sort((a, b) => a.countdownDays - b.countdownDays);
+    const closest = list[0];
+    
+    if (closest) {
+      const nameEscaped = escapeHtml(closest.name);
+      if (closest.countdownDays === 0) {
+        countdownText.innerHTML = `🎉 今天是我们的 <strong>${nameEscaped}</strong>！节日快乐！❤️`;
+      } else {
+        countdownText.innerHTML = `距离 <strong>${nameEscaped}</strong> 还有 <strong>${closest.countdownDays}</strong> 天`;
+      }
+    } else {
+      countdownText.innerHTML = '未设置自定义纪念日';
+    }
   } else {
-    countdownText.innerHTML = `距离我们的 <strong>${anniversaryName}纪念日</strong> 还有 <strong>${countdownDays}</strong> 天`;
+    countdownText.innerHTML = '未设置自定义纪念日';
   }
 }
 
@@ -140,7 +189,7 @@ function saveDate() {
   
   config.anniversaryDate = dateVal;
   window.api.saveConfig(config);
-  updateAnniversary(dateVal);
+  updateAnniversary();
   
   // Show save feedback
   const oldText = saveDateBtn.textContent;
@@ -150,6 +199,47 @@ function saveDate() {
     saveDateBtn.textContent = oldText;
     saveDateBtn.disabled = false;
   }, 1500);
+}
+
+function saveCustomAnniversary() {
+  const nameVal = customAnniversaryNameInput.value.trim();
+  const dateVal = customAnniversaryDateInput.value;
+  if (!nameVal || !dateVal) return;
+  
+  if (!config.customAnniversaries) {
+    config.customAnniversaries = [];
+  }
+  
+  const newAnniv = {
+    id: Date.now(),
+    name: nameVal,
+    date: dateVal
+  };
+  
+  config.customAnniversaries.push(newAnniv);
+  
+  customAnniversaryNameInput.value = '';
+  customAnniversaryDateInput.value = '';
+  
+  window.api.saveConfig(config);
+  updateAnniversary();
+  renderCustomAnniversaries();
+  
+  // Show save feedback
+  const oldText = saveCustomAnniversaryBtn.textContent;
+  saveCustomAnniversaryBtn.textContent = "已保存 ✓";
+  saveCustomAnniversaryBtn.disabled = true;
+  setTimeout(() => {
+    saveCustomAnniversaryBtn.textContent = oldText;
+    saveCustomAnniversaryBtn.disabled = false;
+  }, 1500);
+}
+
+function switchTab(tabId) {
+  const targetItem = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+  if (targetItem) {
+    targetItem.click();
+  }
 }
 
 // Memo operations
@@ -283,6 +373,29 @@ function appendChatBubble(data) {
   const placeholder = chatHistory.querySelector('div');
   if (placeholder && (placeholder.textContent === '暂无互动记录' || placeholder.textContent === '连接中...' || placeholder.textContent === '未检测到IM配置 (离线模式)')) {
     chatHistory.innerHTML = '';
+    lastHourKey = null;
+  }
+
+  // Detect hour key
+  const msgDate = new Date(data.time);
+  const year = msgDate.getFullYear();
+  const month = String(msgDate.getMonth() + 1).padStart(2, '0');
+  const date = String(msgDate.getDate()).padStart(2, '0');
+  const hours = String(msgDate.getHours()).padStart(2, '0');
+  const hourKey = `${year}-${month}-${date} ${hours}:00`;
+
+  if (hourKey !== lastHourKey) {
+    const today = new Date();
+    const isToday = msgDate.getFullYear() === today.getFullYear() &&
+                    msgDate.getMonth() === today.getMonth() &&
+                    msgDate.getDate() === today.getDate();
+    const displayTime = isToday ? `${hours}:00` : `${month}-${date} ${hours}:00`;
+
+    const divider = document.createElement('div');
+    divider.className = 'chat-time-divider';
+    divider.innerHTML = `<span class="chat-time-text">${displayTime}</span>`;
+    chatHistory.appendChild(divider);
+    lastHourKey = hourKey;
   }
 
   const isSelf = data.sender === selfID;
@@ -300,6 +413,129 @@ function appendChatBubble(data) {
   
   // Auto scroll to bottom
   chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function renderChatHistory(history) {
+  chatHistory.innerHTML = '';
+  lastHourKey = null;
+  if (!history || history.length === 0) {
+    chatHistory.innerHTML = '<div style="text-align:center; color:#999; font-size:12px; margin: 10px 0;">暂无互动记录</div>';
+    return;
+  }
+  
+  const today = new Date();
+  
+  history.forEach(data => {
+    const msgDate = new Date(data.time);
+    const year = msgDate.getFullYear();
+    const month = String(msgDate.getMonth() + 1).padStart(2, '0');
+    const date = String(msgDate.getDate()).padStart(2, '0');
+    const hours = String(msgDate.getHours()).padStart(2, '0');
+    const hourKey = `${year}-${month}-${date} ${hours}:00`;
+
+    if (hourKey !== lastHourKey) {
+      const isToday = msgDate.getFullYear() === today.getFullYear() &&
+                      msgDate.getMonth() === today.getMonth() &&
+                      msgDate.getDate() === today.getDate();
+      const displayTime = isToday ? `${hours}:00` : `${month}-${date} ${hours}:00`;
+
+      const divider = document.createElement('div');
+      divider.className = 'chat-time-divider';
+      divider.innerHTML = `<span class="chat-time-text">${displayTime}</span>`;
+      chatHistory.appendChild(divider);
+      lastHourKey = hourKey;
+    }
+
+    const isSelf = data.sender === selfID;
+    const senderName = isSelf ? '我' : '对方';
+
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble ${isSelf ? 'self' : 'partner'}`;
+    
+    bubble.innerHTML = `
+      <div class="chat-bubble-sender">${escapeHtml(senderName)}</div>
+      <div class="chat-bubble-content">${escapeHtml(data.text)}</div>
+    `;
+
+    chatHistory.appendChild(bubble);
+  });
+  
+  // Auto scroll to bottom
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function renderCustomAnniversaries() {
+  const annivList = document.getElementById('anniversary-list');
+  if (!annivList) return;
+  
+  annivList.innerHTML = '';
+  
+  if (!config.customAnniversaries || config.customAnniversaries.length === 0) {
+    annivList.innerHTML = '<li style="text-align:center; color:#999; font-size:12px; margin-top:10px;">暂无自定义纪念日，添加一个吧~</li>';
+    return;
+  }
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  config.customAnniversaries.forEach(anniv => {
+    const targetDate = getNextOccurrence(anniv.date);
+    const diffTime = targetDate - today;
+    const countdownDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    let countdownStr = '';
+    if (countdownDays === 0) {
+      countdownStr = '今天！🎉';
+    } else {
+      countdownStr = `还有 ${countdownDays} 天`;
+    }
+    
+    const li = document.createElement('li');
+    li.className = 'memo-item';
+    
+    li.innerHTML = `
+      <div class="memo-content" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+        <span style="font-weight: 600; font-size: 13px;">${escapeHtml(anniv.name)}</span>
+        <span style="font-size: 11px; color: var(--text-light);">${anniv.date} (${countdownStr})</span>
+      </div>
+      <button class="delete-anniv-btn" data-id="${anniv.id}">&times;</button>
+    `;
+    
+    li.querySelector('.delete-anniv-btn').addEventListener('click', () => {
+      deleteAnniversary(anniv.id);
+    });
+    
+    annivList.appendChild(li);
+  });
+}
+
+function deleteAnniversary(id) {
+  config.customAnniversaries = config.customAnniversaries.filter(a => a.id !== id);
+  window.api.saveConfig(config);
+  updateAnniversary();
+  renderCustomAnniversaries();
+}
+
+// Helper to calculate the next occurrence of an anniversary date (always in the future or today)
+function getNextOccurrence(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const originalDate = new Date(dateStr);
+  originalDate.setHours(0, 0, 0, 0);
+  
+  if (originalDate >= today) {
+    return originalDate;
+  }
+  
+  const targetDate = new Date(today.getFullYear(), originalDate.getMonth(), originalDate.getDate());
+  targetDate.setHours(0, 0, 0, 0);
+  
+  if (targetDate < today) {
+    targetDate.setFullYear(today.getFullYear() + 1);
+  }
+  
+  return targetDate;
 }
 
 // Start

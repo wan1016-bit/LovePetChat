@@ -4,6 +4,7 @@ const petCharacter = document.getElementById('pet-character');
 const dialogueBubble = document.getElementById('dialogue-bubble');
 const dialogueText = document.getElementById('dialogue-text');
 const zzzContainer = document.getElementById('zzz-container');
+const unreadBadge = document.getElementById('unread-badge');
 
 // State variables
 let isDragging = false;
@@ -24,11 +25,17 @@ let processedSleepUrl = '';
 let assetsLoadedCount = 0;
 let partnerCharName = '';
 
+// Timer references (kept so they can be paused when the window hides)
+let brainInterval = null;
+let dialogueInterval = null;
+let isWindowHidden = false;
+
 function getAssetPath(fileName, partnerCharacter) {
+  const outfit = (config && config.selectedOutfit) ? `${config.selectedOutfit}/` : '';
   if (partnerCharacter) {
-    return `assets/characters/${partnerCharacter}/${fileName}`;
+    return `assets/characters/${partnerCharacter}/${outfit}${fileName}`;
   }
-  return `assets/${fileName}`;
+  return `assets/${outfit}${fileName}`;
 }
 
 // Dialogue databases
@@ -58,115 +65,16 @@ const dazeDialogues = [
   "⚪⚫⚪⚫⚪<br>⚪⚪⚫⚪⚪<br>该轮到你落子啦~ ♟️"
 ];
 
-// Preload and process all assets
+// Preload all assets directly (already transparent PNGs)
 async function loadAndProcessAssets(partnerCharacter) {
-  const imagesToProcess = [
-    { key: 'idle', src: getAssetPath('pet_character.png', partnerCharacter) },
-    { key: 'closed', src: getAssetPath('pet_character_closed_eyes.png', partnerCharacter) },
-    { key: 'happy', src: getAssetPath('pet_character_happy.png', partnerCharacter) },
-    { key: 'daze', src: getAssetPath('pet_character_daze.png', partnerCharacter) },
-    { key: 'sleep', src: getAssetPath('pet_character_sleep.png', partnerCharacter) }
-  ];
-
-  for (const imgInfo of imagesToProcess) {
-    processSingleImage(imgInfo.src, (dataUrl) => {
-      if (imgInfo.key === 'idle') processedIdleUrl = dataUrl;
-      else if (imgInfo.key === 'closed') processedClosedUrl = dataUrl;
-      else if (imgInfo.key === 'happy') processedHappyUrl = dataUrl;
-      else if (imgInfo.key === 'daze') processedDazeUrl = dataUrl;
-      else if (imgInfo.key === 'sleep') processedSleepUrl = dataUrl;
-
-      assetsLoadedCount++;
-      // Apply the first image as default background once loaded
-      if (imgInfo.key === 'idle') {
-        updateCharacterBackground();
-      }
-    });
-  }
-}
-
-// "Magic Wand" Background Removal (BFS Flood Fill starting from corners)
-function processSingleImage(imgSrc, callback) {
-  const tempImg = new Image();
-  tempImg.src = imgSrc;
-  tempImg.onload = () => {
-    try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = tempImg.naturalWidth;
-      canvas.height = tempImg.naturalHeight;
-      ctx.drawImage(tempImg, 0, 0);
-      
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
-      const width = canvas.width;
-      const height = canvas.height;
-      
-      const visited = new Uint8Array(width * height);
-      const queue = [];
-      
-      // Helper to check if pixel color is close to white background
-      function isNearWhite(idx) {
-        return data[idx] > 240 && data[idx + 1] > 240 && data[idx + 2] > 240;
-      }
-      
-      // Seed queue with border pixels
-      for (let x = 0; x < width; x++) {
-        queue.push({ x, y: 0 });
-        queue.push({ x, y: height - 1 });
-        visited[x] = 1;
-        visited[x + (height - 1) * width] = 1;
-      }
-      for (let y = 1; y < height - 1; y++) {
-        queue.push({ x: 0, y });
-        queue.push({ x: width - 1, y });
-        visited[y * width] = 1;
-        visited[width - 1 + y * width] = 1;
-      }
-      
-      let head = 0;
-      while (head < queue.length) {
-        const { x, y } = queue[head++];
-        const idx = (y * width + x) * 4;
-        
-        if (isNearWhite(idx)) {
-          data[idx + 3] = 0;
-          const neighbors = [
-            { x: x - 1, y }, { x: x + 1, y },
-            { x, y: y - 1 }, { x, y: y + 1 }
-          ];
-          for (const n of neighbors) {
-            if (n.x >= 0 && n.x < width && n.y >= 0 && n.y < height) {
-              const vIdx = n.y * width + n.x;
-              if (!visited[vIdx]) {
-                 visited[vIdx] = 1;
-                 queue.push(n);
-              }
-            }
-          }
-        }
-      }
-      
-      ctx.putImageData(imgData, 0, 0);
-      callback(canvas.toDataURL());
-    } catch (e) {
-      console.error("Background removal canvas error:", e);
-      callback(imgSrc);
-    }
-  };
-
-  tempImg.onerror = () => {
-    console.warn("Failed to load asset, trying fallback:", imgSrc);
-    // If it is not the main idle image, fall back to the main idle image
-    if (!imgSrc.endsWith('pet_character.png')) {
-      const fallbackSrc = imgSrc.replace(/_(daze|happy|sleep|closed_eyes)\.png$/, '.png');
-      if (fallbackSrc !== imgSrc) {
-        processSingleImage(fallbackSrc, callback);
-        return;
-      }
-    }
-    callback(imgSrc);
-  };
+  processedIdleUrl = getAssetPath('pet_character.png', partnerCharacter);
+  processedClosedUrl = getAssetPath('pet_character_closed_eyes.png', partnerCharacter);
+  processedHappyUrl = getAssetPath('pet_character_happy.png', partnerCharacter);
+  processedDazeUrl = getAssetPath('pet_character_daze.png', partnerCharacter);
+  processedSleepUrl = getAssetPath('pet_character_sleep.png', partnerCharacter);
+  
+  // Apply initial background
+  updateCharacterBackground();
 }
 
 // Initialize configuration and event listeners
@@ -186,11 +94,12 @@ async function init() {
   }
 
   await loadAndProcessAssets(partnerCharacter);
+
   setState('idle');
   startBrain();
 
   showRandomDialogue(true);
-  setInterval(dialogueRoutine, 15000);
+  dialogueInterval = setInterval(dialogueRoutine, 15000);
 
   petCharacter.addEventListener('pointerdown', startDrag);
   petCharacter.addEventListener('pointermove', (e) => {
@@ -229,7 +138,30 @@ async function init() {
   });
 
   window.api.onConfigUpdated((newConfig) => {
+    const oldOutfit = (config && config.selectedOutfit) || '';
     config = newConfig;
+    const newOutfit = (newConfig && newConfig.selectedOutfit) || '';
+    if (oldOutfit !== newOutfit) {
+      loadAndProcessAssets(partnerCharName);
+    }
+  });
+
+  // Pause all loops when hidden to tray, resume when shown again
+  window.api.onWindowHide(() => pauseAll());
+  window.api.onWindowShow(() => resumeAll());
+
+  // Click on unread red dot to open chat window
+  unreadBadge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.api.openChatTab();
+  });
+
+  window.api.onUpdateUnreadState((hasUnread) => {
+    if (hasUnread) {
+      unreadBadge.classList.remove('hidden');
+    } else {
+      unreadBadge.classList.add('hidden');
+    }
   });
 
   // Listen for incoming IM messages from partner to show bubbles
@@ -323,7 +255,9 @@ function startBlinkLoop() {
         }
       }, 150);
     } else {
-      startBlinkLoop();
+      // Not in a blinkable state — stop the loop entirely.
+      // setState() will restart it when entering idle/happy/daze.
+      return;
     }
   }, nextBlinkTime);
 }
@@ -386,7 +320,8 @@ function endDrag(e) {
 
 // Inactivity brain checking loop (runs every 5 seconds)
 function startBrain() {
-  setInterval(() => {
+  if (brainInterval) clearInterval(brainInterval);
+  brainInterval = setInterval(() => {
     if (isDragging || currentState === 'drag' || currentState === 'happy' || currentState === 'nap') return;
 
     const timeSinceLastInteract = Date.now() - lastInteractionTime;
@@ -403,6 +338,25 @@ function startBrain() {
       }
     }
   }, 5000);
+}
+
+// Pause all background loops when the window is hidden to the system tray
+function pauseAll() {
+  isWindowHidden = true;
+  if (brainInterval) { clearInterval(brainInterval); brainInterval = null; }
+  if (dialogueInterval) { clearInterval(dialogueInterval); dialogueInterval = null; }
+  stopBlinkLoop();
+}
+
+// Resume all background loops when the window is shown again
+function resumeAll() {
+  isWindowHidden = false;
+  startBrain();
+  dialogueInterval = setInterval(dialogueRoutine, 15000);
+  const blinkableStates = ['idle', 'happy', 'daze'];
+  if (blinkableStates.includes(currentState)) {
+    startBlinkLoop();
+  }
 }
 
 // Dialog Bubbles logic

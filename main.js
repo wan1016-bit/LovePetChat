@@ -11,8 +11,42 @@ const { Api: TLSSigAPIv2 } = require('tls-sig-api-v2');
 
 let petWindow = null;
 let dashboardWindow = null;
-let tray = null;
 let isQuitting = false;
+let pendingTab = null;
+let tray = null;
+let isChatTabActive = false;
+let hasUnread = false;
+
+// Parse command line arguments to detect custom profile (e.g. --profile=UserB)
+let profile = '';
+for (const arg of process.argv) {
+  if (arg.startsWith('--profile=')) {
+    profile = arg.split('=')[1];
+  }
+}
+
+if (profile) {
+  // Set app name and userData paths to ensure total process/cache isolation
+  app.name = `desktop-pet-profile-${profile}`;
+  const customUserDataPath = path.join(app.getPath('appData'), app.name);
+  app.setPath('userData', customUserDataPath);
+  app.commandLine.appendSwitch('user-data-dir', customUserDataPath);
+  console.log(`Using custom profile: ${profile}, userData: ${customUserDataPath}`);
+}
+
+// ---- 防止程序多开的单实例锁 ----
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (petWindow && !petWindow.isDestroyed()) {
+      if (petWindow.isMinimized()) petWindow.restore();
+      petWindow.show();
+      petWindow.focus();
+    }
+  });
+}
 
 // ---- IM Configuration Loading ----
 // 优先级: secret.json (开发模式) > im-config-builtin.js (构建打包) > 离线模式
@@ -33,8 +67,21 @@ function tryLoadConfigFromFile(filePath) {
   return null;
 }
 
-// 1. 优先尝试 secret.json（开发模式覆盖）
-secretConfig = tryLoadConfigFromFile(path.join(__dirname, 'secret.json'));
+// 1. 优先尝试 secret-<profile>.json，然后是 secret.json（开发模式覆盖）
+if (profile) {
+  secretConfig = tryLoadConfigFromFile(path.join(__dirname, `secret-${profile}.json`));
+}
+if (!secretConfig) {
+  secretConfig = tryLoadConfigFromFile(path.join(__dirname, 'secret.json'));
+  if (secretConfig && profile && profile.toLowerCase() === secretConfig.partnerID.toLowerCase()) {
+    // 自动对调账号，方便本地双开调试
+    const originalSelf = secretConfig.selfID;
+    secretConfig.selfID = secretConfig.partnerID;
+    secretConfig.partnerID = originalSelf;
+    secretConfig.partnerCharacter = secretConfig.partnerCharacter === 'char_girl' ? 'char_boy' : 'char_girl';
+    console.log(`[Auto-Swap] Swapped selfID/partnerID for profile "${profile}". selfID=${secretConfig.selfID}, partnerID=${secretConfig.partnerID}, partnerCharacter=${secretConfig.partnerCharacter}`);
+  }
+}
 
 // 2. 尝试内置构建配置（生产模式，含预生成的 userSig，无 SecretKey）
 if (!secretConfig) {
@@ -73,9 +120,13 @@ const configPath = path.join(app.getPath('userData'), 'desktop-pet-config.json')
 // Default configurations
 const defaultConfig = {
   anniversaryDate: '2024-05-20',
+  customAnniversaries: [
+    { id: 1, name: '百天纪念', date: '2026-06-01' }
+  ],
   petScale: 1.5,
   wanderEnabled: true,
   wanderSpeed: 1,
+  selectedOutfit: "",
   memos: [
     { id: 1, text: '给伴侣准备纪念日惊喜！🎁', completed: false },
     { id: 2, text: '每天提醒对方多喝水 🥤', completed: false }
@@ -92,6 +143,17 @@ function loadConfig() {
     if (fs.existsSync(configPath)) {
       const data = fs.readFileSync(configPath, 'utf-8');
       cachedConfig = JSON.parse(data);
+      // Migrate legacy config if customAnniversaries is not defined
+      if (!cachedConfig.customAnniversaries) {
+        cachedConfig.customAnniversaries = [];
+        if (cachedConfig.customAnniversaryName && cachedConfig.customAnniversaryDate) {
+          cachedConfig.customAnniversaries.push({
+            id: Date.now(),
+            name: cachedConfig.customAnniversaryName,
+            date: cachedConfig.customAnniversaryDate
+          });
+        }
+      }
       return cachedConfig;
     }
   } catch (err) {
@@ -114,6 +176,23 @@ function saveConfig(config) {
     }
   } catch (err) {
     console.error('Error saving config:', err);
+  }
+}
+
+// Scan available outfits inside assets/characters/<partnerCharacter>
+function getAvailableOutfits() {
+  const partnerCharacter = secretConfig ? secretConfig.partnerCharacter : '';
+  if (!partnerCharacter) return [];
+  const charDir = path.join(__dirname, 'assets', 'characters', partnerCharacter);
+  if (!fs.existsSync(charDir)) return [];
+  try {
+    const files = fs.readdirSync(charDir, { withFileTypes: true });
+    return files
+      .filter(dirent => dirent.isDirectory())
+      .map(dirent => dirent.name);
+  } catch (e) {
+    console.error(`Failed to scan outfits:`, e);
+    return [];
   }
 }
 
@@ -220,6 +299,18 @@ function createPetWindow() {
     }
   });
 
+  // Notify renderer to pause/resume background loops
+  petWindow.on('hide', () => {
+    if (petWindow && !petWindow.isDestroyed()) {
+      petWindow.webContents.send('window-hide');
+    }
+  });
+  petWindow.on('show', () => {
+    if (petWindow && !petWindow.isDestroyed()) {
+      petWindow.webContents.send('window-show');
+    }
+  });
+
   petWindow.on('closed', () => {
     petWindow = null;
   });
@@ -239,7 +330,7 @@ function createDashboardWindow() {
     transparent: true,
     alwaysOnTop: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload-dashboard.js'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false
@@ -251,6 +342,7 @@ function createDashboardWindow() {
 
   dashboardWindow.on('closed', () => {
     dashboardWindow = null;
+    isChatTabActive = false; // Reset chat tab tracking when closed
   });
 }
 
@@ -271,7 +363,7 @@ function createTray() {
       }
     },
     {
-      label: '❤️ 恋爱纪念册',
+      label: '❤️ 展开详情',
       click: () => createDashboardWindow()
     },
     { type: 'separator' },
@@ -351,16 +443,18 @@ ipcMain.on('show-context-menu', (event) => {
 
   const contextMenuTemplate = [
     {
-      label: '❤️ 恋爱纪念册',
+      label: '❤️ 展开详情',
       click: () => {
         createDashboardWindow();
       }
     },
     {
-      label: '💬 戳戳说话',
+      label: '💬 飞鸽传书',
       click: () => {
-        if (petWindow && !petWindow.isDestroyed()) {
-          petWindow.webContents.send('trigger-dialogue');
+        pendingTab = 'chat-tab';
+        createDashboardWindow();
+        if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+          dashboardWindow.webContents.send('switch-tab', 'chat-tab');
         }
       }
     },
@@ -393,6 +487,36 @@ ipcMain.on('show-context-menu', (event) => {
           }
         }
       ]
+    },
+    {
+      label: '👗 切换装扮',
+      submenu: (() => {
+        const availableOutfits = getAvailableOutfits();
+        const selectedOutfit = config.selectedOutfit || '';
+        const submenu = [
+          {
+            label: '👗 默认装扮',
+            type: 'checkbox',
+            checked: selectedOutfit === '',
+            click: () => {
+              config.selectedOutfit = '';
+              saveConfig(config);
+            }
+          }
+        ];
+        availableOutfits.forEach(outfit => {
+          submenu.push({
+            label: `👗 ${outfit}`,
+            type: 'checkbox',
+            checked: selectedOutfit === outfit,
+            click: () => {
+              config.selectedOutfit = outfit;
+              saveConfig(config);
+            }
+          });
+        });
+        return submenu;
+      })()
     },
     {
       label: '⚙️ 人物设定',
@@ -490,6 +614,12 @@ ipcMain.on('resize-pet', (event, scale) => {
   }
 });
 
+ipcMain.handle('get-dashboard-init-tab', () => {
+  const tab = pendingTab;
+  pendingTab = null; // consume
+  return tab;
+});
+
 // Expose IM config (without SecretKey!)
 ipcMain.handle('get-im-config', () => {
   if (!secretConfig) return null;
@@ -532,9 +662,43 @@ ipcMain.on('im-message-sent-success', (event, data) => {
 ipcMain.on('im-message-received', (event, data) => {
   if (petWindow && !petWindow.isDestroyed()) {
     petWindow.webContents.send('incoming-im-message', data.text);
+    if (!isChatTabActive) {
+      hasUnread = true;
+      petWindow.webContents.send('update-unread-state', true);
+    }
   }
   if (dashboardWindow && !dashboardWindow.isDestroyed()) {
     dashboardWindow.webContents.send('update-chat-history', data);
+  }
+});
+
+ipcMain.on('chat-tab-active', (event, isActive) => {
+  isChatTabActive = isActive;
+  if (isChatTabActive) {
+    hasUnread = false;
+    if (petWindow && !petWindow.isDestroyed()) {
+      petWindow.webContents.send('update-unread-state', false);
+    }
+  }
+});
+
+ipcMain.on('open-chat-tab', (event) => {
+  pendingTab = 'chat-tab';
+  createDashboardWindow();
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.webContents.send('switch-tab', 'chat-tab');
+  }
+});
+
+ipcMain.on('request-im-history', (event) => {
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.webContents.send('trigger-get-im-history');
+  }
+});
+
+ipcMain.on('im-history-response', (event, history) => {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    dashboardWindow.webContents.send('im-history-response', history);
   }
 });
 

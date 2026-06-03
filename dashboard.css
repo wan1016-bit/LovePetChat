@@ -529,13 +529,15 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* Real-time Chat Card */
-.card-chat {
-  margin-top: 16px;
+.card-chat-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .chat-history-container {
-  max-height: 120px;
-  min-height: 60px;
+  height: 250px;
+  max-height: 250px;
   overflow-y: auto;
   background: rgba(255, 255, 255, 0.25);
   border: 1px solid var(--border-color);
@@ -583,4 +585,62 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .chat-bubble.self .chat-bubble-sender {
   color: rgba(255, 255, 255, 0.8);
   text-align: right;
+}
+
+/* Chat Time Divider */
+.chat-time-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px 0;
+  width: 100%;
+}
+
+.chat-time-divider::before,
+.chat-time-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-time-divider::before {
+  margin-right: 12px;
+}
+
+.chat-time-divider::after {
+  margin-left: 12px;
+}
+
+.chat-time-text {
+  font-size: 9px;
+  color: var(--text-light);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.35);
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+/* Custom Anniversary Delete Button */
+.delete-anniv-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.delete-anniv-btn:hover {
+  background: rgba(255, 71, 87, 0.1);
+  color: #ff4757;
 }
